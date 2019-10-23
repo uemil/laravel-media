@@ -2,74 +2,140 @@
 
 namespace Optix\Media;
 
-use Illuminate\Http\UploadedFile;
+use Exception;
+use InvalidArgumentException;
+use Optix\Media\Models\Media;
+use Illuminate\Filesystem\FilesystemManager;
+use Illuminate\Contracts\Filesystem\Filesystem;
+use Symfony\Component\HttpFoundation\File\File;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 class MediaUploader
 {
-    /**
-     * @var UploadedFile
-     */
-    protected $file;
+    /** @var string */
+    protected $model;
 
-    /**
-     * @var string
-     */
-    protected $name;
+    /** @var string */
+    protected $disk;
 
-    /**
-     * @var string
-     */
+    /** @var string */
+    protected $filePath;
+
+    /** @var string */
     protected $fileName;
 
-    /**
-     * @var array
-     */
+    /** @var string */
+    protected $name;
+
+    /** @var array */
     protected $attributes = [];
 
+    /** @var string */
+    protected $visibility;
+
+    /** @var FilesystemManager */
+    protected $filesystemManager;
+
+    /** @var string */
+    const VISIBILITY_PUBLIC = 'public';
+
+    /** @var string */
+    const VISIBILITY_PRIVATE = 'private';
+
     /**
-     * Create a new MediaUploader instance.
-     *
-     * @param  UploadedFile  $file
+     * @param FilesystemManager $filesystemManager
+     * @param array $config
      * @return void
      */
-    public function __construct(UploadedFile $file)
+    public function __construct(FilesystemManager $filesystemManager, array $config)
     {
-        $this->setFile($file);
+        $this->filesystemManager = $filesystemManager;
+        $this->setModel($config['model']);
+        $this->setDisk($config['disk']);
     }
 
     /**
-     * @param  UploadedFile  $file
-     * @return MediaUploader
-     */
-    public static function fromFile(UploadedFile $file)
-    {
-        return new static($file);
-    }
-
-    /**
-     * Set the file to be uploaded.
+     * @param UploadedFile|File $file
+     * @return self
      *
-     * @param  UploadedFile  $file
-     * @return MediaUploader
+     * @throws InvalidArgumentException
      */
-    public function setFile(UploadedFile $file)
+    public function fromFile($file)
     {
-        $this->file = $file;
+        if ($file instanceof UploadedFile) {
+            $this->filePath = $file->getRealPath();
+            $this->setFileName($fileName = $file->getClientOriginalName());
+            $this->setName(pathinfo($fileName, PATHINFO_FILENAME));
 
-        $fileName = $file->getClientOriginalName();
-        $name = pathinfo($fileName, PATHINFO_FILENAME);
+            return $this;
+        }
 
-        $this->setName($name);
-        $this->setFileName($fileName);
+        if ($file instanceof File) {
+            return $this->fromPath($file->getRealPath());
+        }
+
+        // Todo: Dedicated exception class...
+        throw new InvalidArgumentException();
+    }
+
+    /**
+     * @param string $path
+     * @return self
+     */
+    public function fromPath(string $path)
+    {
+        $this->filePath = $path;
+        $this->setFileName(pathinfo($path, PATHINFO_BASENAME));
+        $this->setName(pathinfo($path, PATHINFO_FILENAME));
 
         return $this;
     }
 
     /**
-     * Set the name of the media item.
-     *
-     * @param  string  $name
-     * @return MediaUploader
+     * @param string $model
+     * @return self
+     */
+    public function setModel(string $model)
+    {
+        $this->model = $model;
+
+        return $this;
+    }
+
+    /**
+     * @param string $disk
+     * @return self
+     */
+    public function setDisk(string $disk)
+    {
+        $this->disk = $disk;
+
+        return $this;
+    }
+
+    /**
+     * @param string $fileName
+     * @return self
+     */
+    public function setFileName(string $fileName)
+    {
+        $this->fileName = self::sanitiseFileName($fileName);
+
+        return $this;
+    }
+
+    /**
+     * @param string $fileName
+     * @return mixed
+     */
+    public static function sanitiseFileName(string $fileName)
+    {
+        return str_replace(['#', '/', '\\', ' '], '-', $fileName);
+    }
+
+    /**
+     * @param string $name
+     * @return self
      */
     public function setName(string $name)
     {
@@ -79,54 +145,10 @@ class MediaUploader
     }
 
     /**
-     * @param  string  $name
-     * @return MediaUploader
+     * @param array $attributes
+     * @return self
      */
-    public function useName(string $name)
-    {
-        return $this->setName($name);
-    }
-
-    /**
-     * Set the name of the file.
-     *
-     * @param  string  $fileName
-     * @return MediaUploader
-     */
-    public function setFileName(string $fileName)
-    {
-        $this->fileName = $this->sanitiseFileName($fileName);
-
-        return $this;
-    }
-
-    /**
-     * @param  string  $fileName
-     * @return MediaUploader
-     */
-    public function useFileName(string $fileName)
-    {
-        return $this->setFileName($fileName);
-    }
-
-    /**
-     * Sanitise the file name.
-     *
-     * @param  string  $fileName
-     * @return string
-     */
-    protected function sanitiseFileName(string $fileName)
-    {
-        return str_replace(['#', '/', '\\', ' '], '-', $fileName);
-    }
-
-    /**
-     * Set any custom attributes to be saved to the media item.
-     *
-     * @param  array  $attributes
-     * @return MediaUploader
-     */
-    public function withAttributes(array $attributes)
+    public function setAttributes(array $attributes)
     {
         $this->attributes = $attributes;
 
@@ -134,41 +156,73 @@ class MediaUploader
     }
 
     /**
-     * @param  array  $properties
-     * @return MediaUploader
+     * @param string $visibility
+     * @return self
+     *
+     * @throws InvalidArgumentException
      */
-    public function withProperties(array $properties)
+    public function setVisibility(string $visibility)
     {
-        return $this->withAttributes($properties);
+        if (! in_array($visibility, [
+            self::VISIBILITY_PUBLIC,
+            self::VISIBILITY_PRIVATE,
+        ])) {
+            // Todo: Dedicated exception class...
+            throw new InvalidArgumentException();
+        }
+
+        $this->visibility = $visibility;
+
+        return $this;
     }
 
     /**
-     * Upload the file to the specified disk.
+     * @return Media
      *
-     * @return mixed
+     * @throws Exception
      */
     public function upload()
     {
-        $model = config('media.model');
+        $filesystem = $this->resolveFilesystem();
 
-        $media = new $model();
+        $media = $this->makeModel();
 
         $media->name = $this->name;
         $media->file_name = $this->fileName;
-        $media->disk = config('media.disk');
-        $media->mime_type = $this->file->getMimeType();
-        $media->size = $this->file->getSize();
+        $media->disk = $this->disk;
+        $media->mime_type = mime_content_type($this->filePath);
+        $media->size = filesize($this->filePath);
 
-        $media->forceFill($this->attributes);
+        $media->fill($this->attributes);
 
         $media->save();
 
-        $media->filesystem()->putFileAs(
-            $media->getDirectory(),
-            $this->file,
-            $this->fileName
-        );
+        $file = fopen($this->filePath, 'r');
+        $filesystem->put($media->getPath(), $file);
+        fclose($file);
 
-        return $media->fresh();
+        return $media;
+    }
+
+    /**
+     * @return Filesystem
+     *
+     * @throws Exception
+     */
+    protected function resolveFilesystem()
+    {
+        try {
+            return $this->filesystemManager->disk($this->disk);
+        } catch (Exception $exception) {
+            throw new Exception();
+        }
+    }
+
+    /**
+     * @return Media
+     */
+    protected function makeModel()
+    {
+        return new $this->model;
     }
 }
