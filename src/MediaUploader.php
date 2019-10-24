@@ -33,6 +33,9 @@ class MediaUploader
     /** @var string */
     protected $visibility;
 
+    /** @var Filesystem */
+    protected $filesystem;
+
     /** @var FilesystemManager */
     protected $filesystemManager;
 
@@ -43,6 +46,8 @@ class MediaUploader
     const VISIBILITY_PRIVATE = 'private';
 
     /**
+     * Create a new uploader instance.
+     *
      * @param FilesystemManager $filesystemManager
      * @param array $config
      * @return void
@@ -55,6 +60,8 @@ class MediaUploader
     }
 
     /**
+     * Initialise the uploader from a file instance.
+     *
      * @param UploadedFile|File $file
      * @return self
      *
@@ -75,10 +82,17 @@ class MediaUploader
         }
 
         // Todo: Dedicated exception class...
-        throw new InvalidArgumentException();
+        throw new InvalidArgumentException(
+            vsprintf("The file parameter must be an instance of \"%s\" or \"%s\".", [
+                UploadedFile::class,
+                File::class,
+            ])
+        );
     }
 
     /**
+     * Initialise the uploader from a file path.
+     *
      * @param string $path
      * @return self
      */
@@ -92,6 +106,8 @@ class MediaUploader
     }
 
     /**
+     * Set the class name of the media model.
+     *
      * @param string $model
      * @return self
      */
@@ -103,17 +119,34 @@ class MediaUploader
     }
 
     /**
+     * Set the disk used for file storage.
+     *
      * @param string $disk
      * @return self
+     *
+     * @throws InvalidArgumentException
      */
     public function setDisk(string $disk)
     {
+        try {
+            $this->filesystem = $this
+                ->filesystemManager
+                ->disk($disk);
+        } catch (Exception $exception) {
+            // Todo: Dedicated exception class...
+            throw new InvalidArgumentException(
+                "Disk \"{$disk}\" cannot be resolved."
+            );
+        }
+
         $this->disk = $disk;
 
         return $this;
     }
 
     /**
+     * Set the name of the file.
+     *
      * @param string $fileName
      * @return self
      */
@@ -125,8 +158,10 @@ class MediaUploader
     }
 
     /**
+     * Sanitise the given file name.
+     *
      * @param string $fileName
-     * @return mixed
+     * @return string
      */
     public static function sanitiseFileName(string $fileName)
     {
@@ -134,6 +169,8 @@ class MediaUploader
     }
 
     /**
+     * Set the name of the media item.
+     *
      * @param string $name
      * @return self
      */
@@ -145,6 +182,8 @@ class MediaUploader
     }
 
     /**
+     * Set any additional media item attributes.
+     *
      * @param array $attributes
      * @return self
      */
@@ -156,6 +195,8 @@ class MediaUploader
     }
 
     /**
+     * Set the file visibility.
+     *
      * @param string $visibility
      * @return self
      *
@@ -163,12 +204,16 @@ class MediaUploader
      */
     public function setVisibility(string $visibility)
     {
-        if (! in_array($visibility, [
+        if (! in_array($visibility, $visibilities = [
             self::VISIBILITY_PUBLIC,
             self::VISIBILITY_PRIVATE,
         ])) {
             // Todo: Dedicated exception class...
-            throw new InvalidArgumentException();
+            throw new InvalidArgumentException(
+                vsprintf("Visibility \"{$visibility}\" is not one of the accepted values: \"%s\".", [
+                    implode('", "', $visibilities)
+                ])
+            );
         }
 
         $this->visibility = $visibility;
@@ -177,14 +222,12 @@ class MediaUploader
     }
 
     /**
-     * @return Media
+     * Upload the file and create a media item.
      *
-     * @throws Exception
+     * @return Media
      */
     public function upload()
     {
-        $filesystem = $this->resolveFilesystem();
-
         $media = $this->makeModel();
 
         $media->name = $this->name;
@@ -197,28 +240,17 @@ class MediaUploader
 
         $media->save();
 
+        // Save the file to the filesystem...
         $file = fopen($this->filePath, 'r');
-        $filesystem->put($media->getPath(), $file);
+        $this->filesystem->put($media->getPath(), $file);
         fclose($file);
 
         return $media;
     }
 
     /**
-     * @return Filesystem
+     * Create a new media model instance.
      *
-     * @throws Exception
-     */
-    protected function resolveFilesystem()
-    {
-        try {
-            return $this->filesystemManager->disk($this->disk);
-        } catch (Exception $exception) {
-            throw new Exception();
-        }
-    }
-
-    /**
      * @return Media
      */
     protected function makeModel()
