@@ -113,6 +113,12 @@ class MediaUploader
      */
     public function setModel(string $model)
     {
+        if (! is_a($model, $mediaModel = Media::class)) {
+            throw new InvalidArgumentException(
+                "The model parameter must be the name of a class that extends \"{$mediaModel}\"."
+            );
+        }
+
         $this->model = $model;
 
         return $this;
@@ -130,8 +136,8 @@ class MediaUploader
     {
         try {
             $this->filesystem = $this
-                ->filesystemManager
-                ->disk($disk);
+                 ->filesystemManager
+                 ->disk($disk);
         } catch (Exception $exception) {
             // Todo: Dedicated exception class...
             throw new InvalidArgumentException(
