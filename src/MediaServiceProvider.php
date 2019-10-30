@@ -21,9 +21,12 @@ class MediaServiceProvider extends ServiceProvider
         $this->app->singleton(ConversionRegistry::class);
 
         $this->app->bind(MediaUploader::class, function ($app) {
+            $mediaConfig = $app['config']->get('media');
+
             return new MediaUploader(
-                $app->make(FilesystemManager::class),
-                $app->make('config')->get('media')
+                $app[FilesystemManager::class],
+                $mediaConfig['model'],
+                $mediaConfig['disk']
             );
         });
     }

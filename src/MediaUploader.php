@@ -6,7 +6,6 @@ use Exception;
 use InvalidArgumentException;
 use Optix\Media\Models\Media;
 use Illuminate\Filesystem\FilesystemManager;
-use Illuminate\Contracts\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\File\File;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
@@ -33,9 +32,6 @@ class MediaUploader
     /** @var string */
     protected $visibility;
 
-    /** @var Filesystem */
-    protected $filesystem;
-
     /** @var FilesystemManager */
     protected $filesystemManager;
 
@@ -49,14 +45,18 @@ class MediaUploader
      * Create a new uploader instance.
      *
      * @param FilesystemManager $filesystemManager
-     * @param array $config
+     * @param string $model
+     * @param string $disk
      * @return void
      */
-    public function __construct(FilesystemManager $filesystemManager, array $config)
-    {
+    public function __construct(
+        FilesystemManager $filesystemManager,
+        string $model,
+        string $disk
+    ) {
         $this->filesystemManager = $filesystemManager;
-        $this->setModel($config['model']);
-        $this->setDisk($config['disk']);
+        $this->setModel($model);
+        $this->setDisk($disk);
     }
 
     /**
@@ -81,13 +81,7 @@ class MediaUploader
             return $this->fromPath($file->getRealPath());
         }
 
-        // Todo: Dedicated exception class...
-        throw new InvalidArgumentException(
-            vsprintf("The file parameter must be an instance of \"%s\" or \"%s\".", [
-                UploadedFile::class,
-                File::class,
-            ])
-        );
+        throw new InvalidArgumentException();
     }
 
     /**
@@ -113,10 +107,8 @@ class MediaUploader
      */
     public function setModel(string $model)
     {
-        if (! is_a($model, $mediaModel = Media::class)) {
-            throw new InvalidArgumentException(
-                "The model parameter must be the name of a class that extends \"{$mediaModel}\"."
-            );
+        if (! is_a($model, Media::class, true)) {
+            throw new InvalidArgumentException();
         }
 
         $this->model = $model;
@@ -134,17 +126,6 @@ class MediaUploader
      */
     public function setDisk(string $disk)
     {
-        try {
-            $this->filesystem = $this
-                 ->filesystemManager
-                 ->disk($disk);
-        } catch (Exception $exception) {
-            // Todo: Dedicated exception class...
-            throw new InvalidArgumentException(
-                "Disk \"{$disk}\" cannot be resolved."
-            );
-        }
-
         $this->disk = $disk;
 
         return $this;
@@ -210,16 +191,11 @@ class MediaUploader
      */
     public function setVisibility(string $visibility)
     {
-        if (! in_array($visibility, $visibilities = [
+        if (! in_array($visibility, [
             self::VISIBILITY_PUBLIC,
             self::VISIBILITY_PRIVATE,
         ])) {
-            // Todo: Dedicated exception class...
-            throw new InvalidArgumentException(
-                vsprintf("Visibility \"{$visibility}\" is not one of the accepted values: \"%s\".", [
-                    implode('", "', $visibilities)
-                ])
-            );
+            throw new InvalidArgumentException();
         }
 
         $this->visibility = $visibility;
@@ -234,7 +210,13 @@ class MediaUploader
      */
     public function upload()
     {
-        $media = $this->makeModel();
+        try {
+            $filesystem = $this->filesystemManager->disk($this->disk);
+        } catch (Exception $exception) {
+            throw new InvalidArgumentException();
+        }
+
+        $media = new $this->model;
 
         $media->name = $this->name;
         $media->file_name = $this->fileName;
@@ -248,19 +230,9 @@ class MediaUploader
 
         // Save the file to the filesystem...
         $file = fopen($this->filePath, 'r');
-        $this->filesystem->put($media->getPath(), $file);
+        $filesystem->put($media->getPath(), $file);
         fclose($file);
 
         return $media;
-    }
-
-    /**
-     * Create a new media model instance.
-     *
-     * @return Media
-     */
-    protected function makeModel()
-    {
-        return new $this->model;
     }
 }
