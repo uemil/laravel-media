@@ -2,72 +2,54 @@
 
 namespace Optix\Media\Tests;
 
+use Mockery;
 use Optix\Media\Models\Media;
 use Optix\Media\MediaUploader;
-use Illuminate\Http\UploadedFile;
-use Optix\Media\Tests\Models\Media as CustomMedia;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Filesystem\FilesystemManager;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 class MediaUploaderTest extends TestCase
 {
-    /** @test */
-    public function it_can_upload_media()
-    {
-        $file = UploadedFile::fake()->image('file-name.jpg');
-
-        $media = MediaUploader::fromFile($file)->upload();
-
-        $this->assertInstanceOf(Media::class, $media);
-        $this->assertTrue($media->filesystem()->exists($media->getPath()));
-    }
+    use RefreshDatabase;
 
     /** @test */
-    public function it_can_change_the_name_of_the_media_model()
+    public function it_can_upload_media_from_an_uploaded_file_instance()
     {
-        $file = UploadedFile::fake()->image('file-name.jpg');
+        $defaultModel = Media::class;
+        $defaultDisk = 'public';
 
-        $media = MediaUploader::fromFile($file)
-            ->useName($newName = 'New name')
-            ->upload();
+        // Mock filesystem...
+        $fakeFilesystem = Storage::fake($defaultDisk);
 
-        $this->assertEquals($newName, $media->name);
-    }
+        // Mock filesystem manager...
+        $fakeFilesystemManager = Mockery::mock(FilesystemManager::class);
+        $fakeFilesystemManager->shouldReceive('disk')
+            ->with($defaultDisk)->once()
+            ->andReturn($fakeFilesystem);
 
-    /** @test */
-    public function it_can_rename_the_file_before_it_gets_uploaded()
-    {
-        $file = UploadedFile::fake()->image('file-name.jpg');
+        $mediaUploader = new MediaUploader(
+            $fakeFilesystemManager,
+            $defaultModel,
+            $defaultDisk
+        );
 
-        $media = MediaUploader::fromFile($file)
-            ->useFileName($newFileName = 'new-file-name.jpg')
-            ->upload();
+        $file = new UploadedFile(
+            $filePath = __DIR__."/files/document.txt",
+            $fileName = 'original-file-name.txt'
+        );
 
-        $this->assertEquals($newFileName, $media->file_name);
-    }
+        $media = $mediaUploader->fromFile($file)->upload();
 
-    /** @test */
-    public function it_will_sanitise_the_file_name()
-    {
-        $file = UploadedFile::fake()->image('bad file name#023.jpg');
+        $this->assertInstanceOf($defaultModel, $media);
 
-        $media = MediaUploader::fromFile($file)->upload();
+        $this->assertEquals('original-file-name', $media->name);
+        $this->assertEquals($fileName, $media->file_name);
+        $this->assertEquals($defaultDisk, $media->disk);
+        $this->assertEquals('text/plain', $media->mime_type);
+        $this->assertEquals(filesize($filePath), $media->size);
 
-        $this->assertEquals('bad-file-name-023.jpg', $media->file_name);
-    }
-
-    /** @test */
-    public function it_can_save_custom_attributes_to_the_media_model()
-    {
-        config()->set('media.model', CustomMedia::class);
-
-        $file = UploadedFile::fake()->image('image.jpg');
-
-        $media = MediaUploader::fromFile($file)
-            ->withAttributes([
-                'custom_attribute' => 'Custom attribute',
-            ])
-            ->upload();
-
-        $this->assertInstanceOf(CustomMedia::class, $media);
-        $this->assertEquals('Custom attribute', $media->custom_attribute);
+        $this->assertTrue($fakeFilesystem->exists($media->getPath()));
     }
 }

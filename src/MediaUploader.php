@@ -3,7 +3,6 @@
 namespace Optix\Media;
 
 use Exception;
-use InvalidArgumentException;
 use Optix\Media\Models\Media;
 use Illuminate\Filesystem\FilesystemManager;
 use Symfony\Component\HttpFoundation\File\File;
@@ -48,6 +47,8 @@ class MediaUploader
      * @param string $model
      * @param string $disk
      * @return void
+     *
+     * @throws Exception
      */
     public function __construct(
         FilesystemManager $filesystemManager,
@@ -65,7 +66,7 @@ class MediaUploader
      * @param UploadedFile|File $file
      * @return self
      *
-     * @throws InvalidArgumentException
+     * @throws Exception
      */
     public function fromFile($file)
     {
@@ -81,7 +82,7 @@ class MediaUploader
             return $this->fromPath($file->getRealPath());
         }
 
-        throw new InvalidArgumentException();
+        throw new Exception();
     }
 
     /**
@@ -104,16 +105,23 @@ class MediaUploader
      *
      * @param string $model
      * @return self
+     *
+     * @throws Exception
      */
     public function setModel(string $model)
     {
-        if (! is_a($model, Media::class, true)) {
-            throw new InvalidArgumentException();
-        }
+        $this->verifyModel($model);
 
         $this->model = $model;
 
         return $this;
+    }
+
+    protected function verifyModel(string $model)
+    {
+        if (! is_a($model, Media::class, true)) {
+            throw new Exception();
+        }
     }
 
     /**
@@ -121,8 +129,6 @@ class MediaUploader
      *
      * @param string $disk
      * @return self
-     *
-     * @throws InvalidArgumentException
      */
     public function setDisk(string $disk)
     {
@@ -187,36 +193,41 @@ class MediaUploader
      * @param string $visibility
      * @return self
      *
-     * @throws InvalidArgumentException
+     * @throws Exception
      */
     public function setVisibility(string $visibility)
     {
-        if (! in_array($visibility, [
-            self::VISIBILITY_PUBLIC,
-            self::VISIBILITY_PRIVATE,
-        ])) {
-            throw new InvalidArgumentException();
-        }
+        $this->verifyVisibility($visibility);
 
         $this->visibility = $visibility;
 
         return $this;
     }
 
+    protected function verifyVisibility(string $visibility)
+    {
+        if (! in_array($visibility, [
+            self::VISIBILITY_PUBLIC,
+            self::VISIBILITY_PRIVATE,
+        ])) {
+            throw new Exception();
+        }
+    }
+
     /**
-     * Upload the file and create a media item.
+     * Create a new media item.
      *
      * @return Media
+     *
+     * @throws Exception
      */
     public function upload()
     {
-        try {
-            $filesystem = $this->filesystemManager->disk($this->disk);
-        } catch (Exception $exception) {
-            throw new InvalidArgumentException();
-        }
+        $this->verifyPath($this->filePath);
 
-        $media = new $this->model;
+        $filesystem = $this->resolveFilesystem($this->disk);
+
+        $media = $this->makeModel();
 
         $media->name = $this->name;
         $media->file_name = $this->fileName;
@@ -234,5 +245,26 @@ class MediaUploader
         fclose($file);
 
         return $media;
+    }
+
+    protected function verifyPath(string $path)
+    {
+        if (! is_file($this->filePath)) {
+            throw new Exception();
+        }
+    }
+
+    protected function resolveFilesystem(string $disk)
+    {
+        try {
+            return $this->filesystemManager->disk($this->disk);
+        } catch (Exception $exception) {
+            throw new Exception();
+        }
+    }
+
+    protected function makeModel()
+    {
+        return new $this->model;
     }
 }
