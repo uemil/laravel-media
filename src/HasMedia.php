@@ -43,7 +43,7 @@ trait HasMedia
      */
     public function getMedia(string $group = 'default')
     {
-        return $this->media->where('pivot.group', $group);
+        return $this->media->where('pivot.group', $group)->sortBy('priority');
     }
 
     /**
