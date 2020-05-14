@@ -15,6 +15,7 @@ class CreateMediaTable extends Migration
             $table->string('disk');
             $table->string('mime_type');
             $table->unsignedInteger('size');
+            $table->unsignedInteger('priority')->default(0);
             $table->timestamps();
         });
 
