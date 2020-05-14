@@ -15,7 +15,7 @@ class Media extends Model
      * @var array
      */
     protected $fillable = [
-        'name', 'file_name', 'disk', 'mime_type', 'size',
+        'name', 'file_name', 'disk', 'mime_type', 'size', 'priority'
     ];
 
     /**
