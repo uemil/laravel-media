@@ -145,6 +145,19 @@ $post->getFirstMediaUrl();
 $post->getFirstMediaUrl('custom-group');
 ```
 
+### Sorting/Ordering Media
+
+Lat's assume you have multiple images associated with a post, and want to rearrange them in a specific order
+
+```php
+// $request->photos is an array containing media id's returned by $post->GetMedia()
+foreach ($request->photos as $key => $media_id){
+  $media = Media::find($media_id);
+  $media->priority = $key;
+  $media->save();
+}
+```
+
 ### Manipulate Images
 
 This package provides a fluent api to manipulate images. You can specify a model to perform "conversions" when
